@@ -2,6 +2,7 @@ import express from 'express'
 import cookieParser from 'cookie-parser'
 import { getContent, sections, sectionRouter } from './sections'
 import { requireAuth } from './auth/session'
+import { authRouter } from './auth/oauth'
 import { prisma } from './db'
 
 export function createApp() {
@@ -42,6 +43,8 @@ export function createApp() {
   for (const cfg of sections) {
     app.use(`/api/${cfg.path}`, sectionRouter(cfg))
   }
+
+  app.use('/auth', authRouter)
 
   return app
 }
