@@ -1,14 +1,15 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import SectionTitle from './SectionTitle'
-import { experiences } from '../data/resume'
+import { useResume } from '@/lib/resume-context'
 
 export default function Experience() {
+  const { experiences } = useResume()
   return (
     <section id="experience" className="container mx-auto max-w-5xl px-6 py-14">
       <SectionTitle>Experience</SectionTitle>
       <div className="relative flex flex-col gap-6 border-l-2 border-border pl-6">
         {experiences.map((job) => (
-          <article key={job.company} className="relative">
+          <article key={job.id} className="relative">
             <span
               aria-hidden="true"
               className="absolute -left-[31px] top-7 size-3 rounded-full bg-primary ring-4 ring-primary/20"

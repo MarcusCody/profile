@@ -6,9 +6,10 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import SectionTitle from './SectionTitle'
-import { education, awards } from '../data/resume'
+import { useResume } from '@/lib/resume-context'
 
 export default function EducationAwards() {
+  const { education, awards } = useResume()
   return (
     <section id="education" className="container mx-auto max-w-5xl px-6 py-14">
       <div className="grid gap-8 md:grid-cols-2">
@@ -16,7 +17,7 @@ export default function EducationAwards() {
           <SectionTitle>Education</SectionTitle>
           <div className="flex flex-col gap-4">
             {education.map((entry) => (
-              <Card key={entry.qualification}>
+              <Card key={entry.id}>
                 <CardHeader>
                   <CardTitle className="text-base">{entry.qualification}</CardTitle>
                   <CardDescription>{entry.institution}</CardDescription>
@@ -35,7 +36,7 @@ export default function EducationAwards() {
           <SectionTitle>Awards</SectionTitle>
           <div className="flex flex-col gap-4">
             {awards.map((award) => (
-              <Card key={award.title}>
+              <Card key={award.id}>
                 <CardHeader>
                   <CardTitle className="text-base">{award.title}</CardTitle>
                   <p className="font-mono text-xs text-muted-foreground">

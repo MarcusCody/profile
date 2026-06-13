@@ -1,35 +1,15 @@
 import { Mail, MessageCircle } from 'lucide-react'
 import { GitHubIcon, LinkedInIcon } from '@/components/icons'
-import { profile } from '../data/resume'
-
-const contactLinks = [
-  {
-    href: `mailto:${profile.email}`,
-    label: profile.email,
-    icon: Mail,
-    external: false,
-  },
-  {
-    href: profile.whatsapp,
-    label: `WhatsApp · ${profile.phone}`,
-    icon: MessageCircle,
-    external: true,
-  },
-  {
-    href: profile.github,
-    label: 'github.com/MarcusCody',
-    icon: GitHubIcon,
-    external: true,
-  },
-  {
-    href: profile.linkedin,
-    label: 'linkedin.com/in/hao-jie-chang',
-    icon: LinkedInIcon,
-    external: true,
-  },
-]
+import { useResume } from '@/lib/resume-context'
 
 export default function Footer() {
+  const { profile } = useResume()
+  const contactLinks = [
+    { href: `mailto:${profile.email}`, label: profile.email, icon: Mail, external: false },
+    { href: profile.whatsapp, label: `WhatsApp · ${profile.phone}`, icon: MessageCircle, external: true },
+    { href: profile.github, label: profile.github.replace(/^https?:\/\//, ''), icon: GitHubIcon, external: true },
+    { href: profile.linkedin, label: profile.linkedin.replace(/^https?:\/\//, ''), icon: LinkedInIcon, external: true },
+  ]
   return (
     <footer className="mt-12 border-t bg-card/50 pb-8 pt-12">
       <div className="container mx-auto flex max-w-5xl flex-wrap justify-between gap-8 px-6">

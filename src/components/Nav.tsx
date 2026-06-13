@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { profile } from '../data/resume'
+import { useResume } from '@/lib/resume-context'
 
 const links = [
   { href: '#skills', label: 'Skills' },
@@ -11,6 +11,7 @@ const links = [
 ]
 
 export default function Nav() {
+  const { profile } = useResume()
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 

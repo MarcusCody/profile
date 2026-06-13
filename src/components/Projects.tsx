@@ -7,15 +7,16 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import SectionTitle from './SectionTitle'
-import { projects } from '../data/resume'
+import { useResume } from '@/lib/resume-context'
 
 export default function Projects() {
+  const { projects } = useResume()
   return (
     <section id="projects" className="container mx-auto max-w-5xl px-6 py-14">
       <SectionTitle>Selected Projects</SectionTitle>
       <div className="grid gap-4 md:grid-cols-3">
         {projects.map((project) => (
-          <Card key={project.name} className="flex flex-col">
+          <Card key={project.id} className="flex flex-col">
             <CardHeader>
               <CardTitle>{project.name}</CardTitle>
               <CardDescription>{project.description}</CardDescription>

@@ -1,9 +1,10 @@
 import { Mail, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { GitHubIcon, LinkedInIcon } from '@/components/icons'
-import { profile } from '../data/resume'
+import { useResume } from '@/lib/resume-context'
 
 export default function Hero() {
+  const { profile } = useResume()
   return (
     <section
       className="container mx-auto max-w-5xl px-6 pb-12 pt-16 md:pt-28"
