@@ -16,9 +16,19 @@ Personal resume site (Vite + React + Tailwind) with a Node/Express + Prisma admi
 `npm run server:test`
 
 ## Deploy (Azure App Service)
-- Build the site: `npm run build` (outputs `dist/`).
-- Run the server in production: `NODE_ENV=production npm --prefix server start`
-  (Express serves `dist/` + the API from one process/URL).
+Run these steps in order on the host:
+
+1. Build the static site: `npm install && npm run build` (outputs `dist/`).
+2. Install server deps: `npm --prefix server install`
+   (this runs `prisma generate` automatically via the server's `postinstall`,
+   so `@prisma/client` is always generated for the target environment).
+3. Sync the schema on the prod DB: `npm --prefix server run db:push`.
+   If starting from an empty DB, also seed once: `npm --prefix server run db:seed`.
+4. Start the server: `NODE_ENV=production npm --prefix server start`
+   (Express serves `dist/` + the API from one process/URL; unknown `/api` and
+   `/auth` routes return a JSON 404 instead of the SPA HTML).
+
+Notes:
 - Database: keep SQLite on the App Service persistent `/home`, or switch
   `server/prisma/schema.prisma` provider to `sqlserver` and set `DATABASE_URL`
   to your Azure SQL connection string.
