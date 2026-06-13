@@ -28,6 +28,7 @@
 - `server/prisma/seed.ts` — seeds DB from `src/data/resume.ts`.
 - `server/src/db.ts` — Prisma client singleton.
 - `server/src/config.ts` — env config loader.
+- `server/src/http.ts` — async route wrapper + terminal error-handling middleware.
 - `server/src/sections.ts` — section configs + serialize helpers + content service + CRUD router factory.
 - `server/src/auth/session.ts` — JWT sign/verify + `requireAuth` middleware.
 - `server/src/auth/oauth.ts` — GitHub + Google OAuth routes, `/auth/logout`.
@@ -424,10 +425,19 @@ git commit -m "feat(server): add prisma schema and seed from resume data"
 - [ ] **Step 1: Create `server/src/config.ts`**
 
 ```ts
+function resolveJwtSecret(): string {
+  const secret = process.env.JWT_SECRET
+  if (secret) return secret
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET is required in production')
+  }
+  return 'dev-insecure-secret'
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3001),
   appUrl: process.env.APP_URL ?? 'http://localhost:5173',
-  jwtSecret: process.env.JWT_SECRET ?? 'dev-insecure-secret',
+  jwtSecret: resolveJwtSecret(),
   allowedEmails: (process.env.ALLOWED_EMAILS ?? '')
     .split(',')
     .map((s) => s.trim().toLowerCase())
@@ -507,6 +517,7 @@ git commit -m "feat(server): add express app skeleton, config, and prod static s
 ### Task 4: Content service + `GET /api/content` (TDD)
 
 **Files:**
+- Create: `server/src/http.ts`
 - Create: `server/src/sections.ts`
 - Create: `server/vitest.config.ts`
 - Create: `server/test/setup.ts`
@@ -625,12 +636,43 @@ describe('GET /api/content', () => {
 Run: `npm --prefix server test -- content`
 Expected: FAIL — `GET /api/content` returns 404 (route not implemented yet).
 
-- [ ] **Step 5: Create `server/src/sections.ts`** with serialize helpers, the content service, the section configs, and the CRUD router factory
+- [ ] **Step 5a: Create `server/src/http.ts`** — an async wrapper so rejected promises reach Express's error pipeline (Express 4 does not await handlers), plus a terminal error-handling middleware that maps Prisma `P2025` to 404 and everything else to 500.
+
+```ts
+import type { Request, Response, NextFunction } from 'express'
+
+type AsyncHandler = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => unknown | Promise<unknown>
+
+export const wrap =
+  (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunction) =>
+    Promise.resolve(fn(req, res, next)).catch(next)
+
+export function errorHandler(
+  err: any,
+  _req: Request,
+  res: Response,
+  _next: NextFunction,
+) {
+  if (err?.code === 'P2025') {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+  console.error(err)
+  res.status(500).json({ error: 'server_error' })
+}
+```
+
+- [ ] **Step 5b: Create `server/src/sections.ts`** with serialize helpers, the content service, the section configs, and the CRUD router factory. All async handlers are `wrap`ped; `toRow` only stores real arrays for array fields; `getContent` reuses `toOutput` so serialization has one source of truth.
 
 ```ts
 import { Router } from 'express'
 import { prisma } from './db'
 import { requireAuth } from './auth/session'
+import { wrap } from './http'
 
 export interface SectionConfig {
   path: string
@@ -681,9 +723,14 @@ function toRow(body: any, cfg: SectionConfig) {
   const data: any = {}
   for (const f of cfg.fields) if (body[f] !== undefined) data[f] = body[f]
   for (const f of cfg.arrayFields)
-    if (body[f] !== undefined) data[f] = JSON.stringify(body[f] ?? [])
+    if (body[f] !== undefined)
+      data[f] = JSON.stringify(Array.isArray(body[f]) ? body[f] : [])
   return data
 }
+
+const cfgByModel: Record<string, SectionConfig> = Object.fromEntries(
+  sections.map((s) => [s.model, s]),
+)
 
 export async function getContent() {
   const [profile, skillGroups, experiences, projects, education, awards] =
@@ -698,42 +745,51 @@ export async function getContent() {
 
   return {
     profile,
-    skillGroups: skillGroups.map((r) => ({ ...r, skills: JSON.parse(r.skills) })),
-    experiences: experiences.map((r) => ({
-      ...r,
-      highlights: JSON.parse(r.highlights),
-    })),
-    projects: projects.map((r) => ({ ...r, tags: JSON.parse(r.tags) })),
-    education,
-    awards,
+    skillGroups: skillGroups.map((r) => toOutput(r, cfgByModel.skillGroup)),
+    experiences: experiences.map((r) => toOutput(r, cfgByModel.experience)),
+    projects: projects.map((r) => toOutput(r, cfgByModel.project)),
+    education: education.map((r) => toOutput(r, cfgByModel.education)),
+    awards: awards.map((r) => toOutput(r, cfgByModel.award)),
   }
 }
 
 export function sectionRouter(cfg: SectionConfig) {
   const r = Router()
 
-  r.post('/', requireAuth, async (req, res) => {
-    const max = await delegate(cfg.model).aggregate({ _max: { sortOrder: true } })
-    const sortOrder = (max._max.sortOrder ?? -1) + 1
-    const created = await delegate(cfg.model).create({
-      data: { ...toRow(req.body, cfg), sortOrder },
-    })
-    res.status(201).json(toOutput(created, cfg))
-  })
+  r.post(
+    '/',
+    requireAuth,
+    wrap(async (req, res) => {
+      const max = await delegate(cfg.model).aggregate({ _max: { sortOrder: true } })
+      const sortOrder = (max._max.sortOrder ?? -1) + 1
+      const created = await delegate(cfg.model).create({
+        data: { ...toRow(req.body, cfg), sortOrder },
+      })
+      res.status(201).json(toOutput(created, cfg))
+    }),
+  )
 
-  r.put('/:id', requireAuth, async (req, res) => {
-    const id = Number(req.params.id)
-    const updated = await delegate(cfg.model).update({
-      where: { id },
-      data: toRow(req.body, cfg),
-    })
-    res.json(toOutput(updated, cfg))
-  })
+  r.put(
+    '/:id',
+    requireAuth,
+    wrap(async (req, res) => {
+      const id = Number(req.params.id)
+      const updated = await delegate(cfg.model).update({
+        where: { id },
+        data: toRow(req.body, cfg),
+      })
+      res.json(toOutput(updated, cfg))
+    }),
+  )
 
-  r.delete('/:id', requireAuth, async (req, res) => {
-    await delegate(cfg.model).delete({ where: { id: Number(req.params.id) } })
-    res.status(204).end()
-  })
+  r.delete(
+    '/:id',
+    requireAuth,
+    wrap(async (req, res) => {
+      await delegate(cfg.model).delete({ where: { id: Number(req.params.id) } })
+      res.status(204).end()
+    }),
+  )
 
   return r
 }
@@ -749,6 +805,7 @@ Replace the body of `createApp` so it imports and uses `getContent`:
 import express from 'express'
 import cookieParser from 'cookie-parser'
 import { getContent } from './sections'
+import { wrap, errorHandler } from './http'
 
 export function createApp() {
   const app = express()
@@ -759,9 +816,15 @@ export function createApp() {
     res.json({ ok: true })
   })
 
-  app.get('/api/content', async (_req, res) => {
-    res.json(await getContent())
-  })
+  app.get(
+    '/api/content',
+    wrap(async (_req, res) => {
+      res.json(await getContent())
+    }),
+  )
+
+  // Keep last: routes added in later tasks must be registered ABOVE this.
+  app.use(errorHandler)
 
   return app
 }
@@ -775,7 +838,7 @@ Expected: PASS (1 test).
 - [ ] **Step 8: Commit**
 
 ```bash
-git add server/src/sections.ts server/src/app.ts server/vitest.config.ts server/test/setup.ts server/test/content.test.ts
+git add server/src/http.ts server/src/sections.ts server/src/app.ts server/vitest.config.ts server/test/setup.ts server/test/content.test.ts
 git commit -m "feat(server): add content service and GET /api/content with tests"
 ```
 
@@ -841,8 +904,11 @@ import { requireAuth } from './auth/session'
 ```ts
 import { describe, it, expect } from 'vitest'
 import request from 'supertest'
+import jwt from 'jsonwebtoken'
 import { createApp } from '../src/app'
 import { signSession, SESSION_COOKIE } from '../src/auth/session'
+import { config } from '../src/config'
+import { isAllowedEmail } from '../src/auth/oauth'
 
 const app = createApp()
 
@@ -865,10 +931,54 @@ describe('auth guard', () => {
     const res = await request(app).post('/api/experiences').send({ company: 'X' })
     expect(res.status).toBe(401)
   })
+
+  it('rejects a forged/tampered session cookie with 401', async () => {
+    const res = await request(app)
+      .get('/api/me')
+      .set('Cookie', `${SESSION_COOKIE}=not-a-real-token`)
+    expect(res.status).toBe(401)
+  })
+
+  it('rejects an expired session cookie with 401', async () => {
+    const token = jwt.sign(
+      { email: 'owner@example.com', provider: 'github' },
+      config.jwtSecret,
+      { expiresIn: -10 },
+    )
+    const res = await request(app)
+      .get('/api/me')
+      .set('Cookie', `${SESSION_COOKIE}=${token}`)
+    expect(res.status).toBe(401)
+  })
+})
+
+describe('oauth state', () => {
+  it('returns 400 when the state does not match (no/mismatched cookie)', async () => {
+    const res = await request(app).get('/auth/github/callback?code=x&state=wrong')
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('isAllowedEmail allowlist gate', () => {
+  it('passes an allowlisted email', () => {
+    expect(isAllowedEmail('owner@example.com')).toBe(true)
+  })
+
+  it('is case-insensitive for allowlisted emails', () => {
+    expect(isAllowedEmail('OWNER@example.com')).toBe(true)
+  })
+
+  it('rejects a non-allowlisted email', () => {
+    expect(isAllowedEmail('intruder@example.com')).toBe(false)
+  })
+
+  it('rejects an empty email', () => {
+    expect(isAllowedEmail('')).toBe(false)
+  })
 })
 ```
 
-(The third assertion requires section routes mounted — done in Task 6. It will pass once Task 6 is complete; if running Task 5 alone, expect the first two to pass and the third to 404. Implement Task 6 next.)
+(The `POST /api/experiences` assertion requires section routes mounted — done in Task 6. It will pass once Task 6 is complete; if running Task 5 alone, expect it to 404 until then. The `oauth state` test depends on `isAllowedEmail`/`authRouter` from `auth/oauth.ts` (Task 7), so run the full suite after Task 7. Implement Task 6 next.)
 
 - [ ] **Step 4: Run the test**
 
@@ -944,6 +1054,23 @@ describe('experiences CRUD', () => {
     const after = await request(app).get('/api/content')
     expect(after.body.experiences).toHaveLength(0)
   })
+
+  it('returns 404 (not a crash) when updating a non-existent id', async () => {
+    const res = await request(app)
+      .put('/api/experiences/999999')
+      .set('Cookie', authCookie)
+      .send({ role: 'Ghost' })
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'not_found' })
+  })
+
+  it('returns 404 (not a crash) when deleting a non-existent id', async () => {
+    const res = await request(app)
+      .delete('/api/experiences/999999')
+      .set('Cookie', authCookie)
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'not_found' })
+  })
 })
 ```
 
@@ -952,7 +1079,7 @@ describe('experiences CRUD', () => {
 Run: `npm --prefix server test -- crud`
 Expected: FAIL — `POST /api/experiences` returns 404.
 
-- [ ] **Step 3: Mount section routers in `server/src/app.ts`** — add inside `createApp` before `return app`:
+- [ ] **Step 3: Mount section routers in `server/src/app.ts`** — add inside `createApp` before `app.use(errorHandler)` (the error handler must stay last):
 
 ```ts
 import { sections, sectionRouter } from './sections'
@@ -962,28 +1089,36 @@ import { sections, sectionRouter } from './sections'
   }
 ```
 
-- [ ] **Step 4: Add the `PUT /api/profile` route in `server/src/app.ts`** (after `/api/me`)
+- [ ] **Step 4: Add the `PUT /api/profile` route in `server/src/app.ts`** (after `/api/me`, wrapped so async errors reach the error handler)
 
 ```ts
 import { prisma } from './db'
+import { wrap } from './http'
 // ...
-  app.put('/api/profile', requireAuth, async (req, res) => {
-    const fields = [
-      'name',
-      'title',
-      'location',
-      'email',
-      'phone',
-      'whatsapp',
-      'linkedin',
-      'github',
-      'summary',
-    ]
-    const data: any = {}
-    for (const f of fields) if (req.body[f] !== undefined) data[f] = req.body[f]
-    const updated = await prisma.profile.update({ where: { id: 'singleton' }, data })
-    res.json(updated)
-  })
+  app.put(
+    '/api/profile',
+    requireAuth,
+    wrap(async (req, res) => {
+      const fields = [
+        'name',
+        'title',
+        'location',
+        'email',
+        'phone',
+        'whatsapp',
+        'linkedin',
+        'github',
+        'summary',
+      ]
+      const data: any = {}
+      for (const f of fields) if (req.body[f] !== undefined) data[f] = req.body[f]
+      const updated = await prisma.profile.update({
+        where: { id: 'singleton' },
+        data,
+      })
+      res.json(updated)
+    }),
+  )
 ```
 
 - [ ] **Step 5: Run all backend tests**
@@ -1013,9 +1148,15 @@ import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import type { Response } from 'express'
 import { config } from '../config'
+import { wrap } from '../http'
 import { signSession, SESSION_COOKIE, type SessionUser } from './session'
 
 const STATE_COOKIE = 'oauth_state'
+
+/** Allowlist gate: true only for non-empty emails present in ALLOWED_EMAILS. */
+export function isAllowedEmail(email: string): boolean {
+  return !!email && config.allowedEmails.includes(email.toLowerCase())
+}
 
 function setState(res: Response, state: string) {
   res.cookie(STATE_COOKIE, state, {
@@ -1027,7 +1168,7 @@ function setState(res: Response, state: string) {
 }
 
 function finishLogin(res: Response, user: SessionUser) {
-  if (!user.email || !config.allowedEmails.includes(user.email.toLowerCase())) {
+  if (!isAllowedEmail(user.email)) {
     res.status(403).send('Access denied: this account is not allowed.')
     return
   }
@@ -1055,44 +1196,51 @@ authRouter.get('/github', (_req, res) => {
   res.redirect(url.toString())
 })
 
-authRouter.get('/github/callback', async (req, res) => {
-  const { code, state } = req.query
-  if (!code || state !== req.cookies?.[STATE_COOKIE]) {
-    res.status(400).send('Invalid OAuth state.')
-    return
-  }
-  const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
-    method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: config.github.clientId,
-      client_secret: config.github.clientSecret,
-      code,
-      redirect_uri: `${config.appUrl}/auth/github/callback`,
-    }),
-  })
-  const { access_token } = (await tokenRes.json()) as { access_token?: string }
-  if (!access_token) {
-    res.status(400).send('Failed to obtain GitHub token.')
-    return
-  }
-  const ghHeaders = {
-    Authorization: `Bearer ${access_token}`,
-    'User-Agent': 'profile-admin',
-    Accept: 'application/vnd.github+json',
-  }
-  const ghUser = (await (
-    await fetch('https://api.github.com/user', { headers: ghHeaders })
-  ).json()) as { email?: string; name?: string; login?: string }
-  let email = ghUser.email ?? ''
-  if (!email) {
-    const emails = (await (
-      await fetch('https://api.github.com/user/emails', { headers: ghHeaders })
-    ).json()) as Array<{ email: string; primary: boolean }>
-    email = emails.find((e) => e.primary)?.email ?? emails[0]?.email ?? ''
-  }
-  finishLogin(res, { email, name: ghUser.name ?? ghUser.login, provider: 'github' })
-})
+authRouter.get(
+  '/github/callback',
+  wrap(async (req, res) => {
+    const { code, state } = req.query
+    if (!code || state !== req.cookies?.[STATE_COOKIE]) {
+      res.status(400).send('Invalid OAuth state.')
+      return
+    }
+    const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: config.github.clientId,
+        client_secret: config.github.clientSecret,
+        code,
+        redirect_uri: `${config.appUrl}/auth/github/callback`,
+      }),
+    })
+    const { access_token } = (await tokenRes.json()) as { access_token?: string }
+    if (!access_token) {
+      res.status(400).send('Failed to obtain GitHub token.')
+      return
+    }
+    const ghHeaders = {
+      Authorization: `Bearer ${access_token}`,
+      'User-Agent': 'profile-admin',
+      Accept: 'application/vnd.github+json',
+    }
+    const ghUser = (await (
+      await fetch('https://api.github.com/user', { headers: ghHeaders })
+    ).json()) as { email?: string; name?: string; login?: string }
+    let email = ghUser.email ?? ''
+    if (!email) {
+      const emails = (await (
+        await fetch('https://api.github.com/user/emails', { headers: ghHeaders })
+      ).json()) as Array<{ email: string; primary: boolean }>
+      email = emails.find((e) => e.primary)?.email ?? emails[0]?.email ?? ''
+    }
+    finishLogin(res, {
+      email,
+      name: ghUser.name ?? ghUser.login,
+      provider: 'github',
+    })
+  }),
+)
 
 // --- Google ---
 authRouter.get('/google', (_req, res) => {
@@ -1107,44 +1255,54 @@ authRouter.get('/google', (_req, res) => {
   res.redirect(url.toString())
 })
 
-authRouter.get('/google/callback', async (req, res) => {
-  const { code, state } = req.query
-  if (!code || state !== req.cookies?.[STATE_COOKIE]) {
-    res.status(400).send('Invalid OAuth state.')
-    return
-  }
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code: String(code),
-      client_id: config.google.clientId,
-      client_secret: config.google.clientSecret,
-      redirect_uri: `${config.appUrl}/auth/google/callback`,
-      grant_type: 'authorization_code',
-    }),
-  })
-  const { access_token } = (await tokenRes.json()) as { access_token?: string }
-  if (!access_token) {
-    res.status(400).send('Failed to obtain Google token.')
-    return
-  }
-  const g = (await (
-    await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
-      headers: { Authorization: `Bearer ${access_token}` },
+authRouter.get(
+  '/google/callback',
+  wrap(async (req, res) => {
+    const { code, state } = req.query
+    if (!code || state !== req.cookies?.[STATE_COOKIE]) {
+      res.status(400).send('Invalid OAuth state.')
+      return
+    }
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code: String(code),
+        client_id: config.google.clientId,
+        client_secret: config.google.clientSecret,
+        redirect_uri: `${config.appUrl}/auth/google/callback`,
+        grant_type: 'authorization_code',
+      }),
     })
-  ).json()) as { email?: string; name?: string }
-  finishLogin(res, { email: g.email ?? '', name: g.name, provider: 'google' })
-})
+    const { access_token } = (await tokenRes.json()) as { access_token?: string }
+    if (!access_token) {
+      res.status(400).send('Failed to obtain Google token.')
+      return
+    }
+    const g = (await (
+      await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+        headers: { Authorization: `Bearer ${access_token}` },
+      })
+    ).json()) as { email?: string; name?: string }
+    finishLogin(res, { email: g.email ?? '', name: g.name, provider: 'google' })
+  }),
+)
 
 // --- Logout ---
+// Clear with the same attributes used when setting the cookie so it reliably
+// clears across browsers.
 authRouter.post('/logout', (_req, res) => {
-  res.clearCookie(SESSION_COOKIE)
+  res.clearCookie(SESSION_COOKIE, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: config.isHttps,
+    path: '/',
+  })
   res.json({ ok: true })
 })
 ```
 
-- [ ] **Step 2: Mount the auth router in `server/src/app.ts`** — add inside `createApp` before `return app`:
+- [ ] **Step 2: Mount the auth router in `server/src/app.ts`** — add inside `createApp` before `app.use(errorHandler)` (the error handler must stay last):
 
 ```ts
 import { authRouter } from './auth/oauth'
