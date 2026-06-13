@@ -1,7 +1,8 @@
 import express from 'express'
 import cookieParser from 'cookie-parser'
-import { getContent } from './sections'
+import { getContent, sections, sectionRouter } from './sections'
 import { requireAuth } from './auth/session'
+import { prisma } from './db'
 
 export function createApp() {
   const app = express()
@@ -19,6 +20,28 @@ export function createApp() {
   app.get('/api/me', requireAuth, (req, res) => {
     res.json({ user: (req as any).user })
   })
+
+  app.put('/api/profile', requireAuth, async (req, res) => {
+    const fields = [
+      'name',
+      'title',
+      'location',
+      'email',
+      'phone',
+      'whatsapp',
+      'linkedin',
+      'github',
+      'summary',
+    ]
+    const data: any = {}
+    for (const f of fields) if (req.body[f] !== undefined) data[f] = req.body[f]
+    const updated = await prisma.profile.update({ where: { id: 'singleton' }, data })
+    res.json(updated)
+  })
+
+  for (const cfg of sections) {
+    app.use(`/api/${cfg.path}`, sectionRouter(cfg))
+  }
 
   return app
 }
