@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { api, type ResumeContent, type SessionUser } from '@/lib/api'
 import { adminSections } from './sections.config'
 import ProfileEditor from './ProfileEditor'
-import SectionEditor from './SectionEditor'
+import SectionEditor, { type Item } from './SectionEditor'
 
 export default function Dashboard({
   user,
@@ -13,9 +13,14 @@ export default function Dashboard({
   onLogout: () => void
 }) {
   const [content, setContent] = useState<ResumeContent | null>(null)
+  const [loadError, setLoadError] = useState(false)
 
   function reload() {
-    api.getContent().then(setContent)
+    setLoadError(false)
+    api
+      .getContent()
+      .then(setContent)
+      .catch(() => setLoadError(true))
   }
 
   useEffect(() => {
@@ -48,7 +53,16 @@ export default function Dashboard({
         </div>
       </header>
 
-      {!content ? (
+      {loadError ? (
+        <div className="flex flex-col items-start gap-3">
+          <p className="text-sm text-destructive">
+            Could not load content. Please try again.
+          </p>
+          <Button variant="outline" size="sm" onClick={reload}>
+            Retry
+          </Button>
+        </div>
+      ) : !content ? (
         <p className="text-muted-foreground">Loading…</p>
       ) : (
         <div className="flex flex-col gap-6">
@@ -57,7 +71,7 @@ export default function Dashboard({
             <SectionEditor
               key={section.path}
               section={section}
-              items={(content as any)[sectionKey(section.path)]}
+              items={content[sectionKey(section.path)] as Item[]}
               onChanged={reload}
             />
           ))}
@@ -67,8 +81,10 @@ export default function Dashboard({
   )
 }
 
-function sectionKey(path: string): keyof ResumeContent {
-  const map: Record<string, keyof ResumeContent> = {
+type SectionKey = Exclude<keyof ResumeContent, 'profile'>
+
+function sectionKey(path: string): SectionKey {
+  const map: Record<string, SectionKey> = {
     'skill-groups': 'skillGroups',
     experiences: 'experiences',
     projects: 'projects',

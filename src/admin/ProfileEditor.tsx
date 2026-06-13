@@ -11,13 +11,17 @@ export default function ProfileEditor({ profile }: { profile: ResumeContent['pro
   const [form, setForm] = useState<Record<string, string>>({ ...profile })
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function save() {
     setBusy(true)
     setSaved(false)
     try {
       await api.updateProfile(form)
+      setError(null)
       setSaved(true)
+    } catch {
+      setError('Save failed — check your session and try again.')
     } finally {
       setBusy(false)
     }
@@ -31,15 +35,17 @@ export default function ProfileEditor({ profile }: { profile: ResumeContent['pro
       <CardContent className="flex flex-col gap-3">
         {profileFields.map((f) => (
           <div key={f.name} className="flex flex-col gap-1.5">
-            <Label>{f.label}</Label>
+            <Label htmlFor={`profile-${f.name}`}>{f.label}</Label>
             {f.type === 'textarea' ? (
               <Textarea
+                id={`profile-${f.name}`}
                 value={form[f.name] ?? ''}
                 rows={4}
                 onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))}
               />
             ) : (
               <Input
+                id={`profile-${f.name}`}
                 value={form[f.name] ?? ''}
                 onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))}
               />
@@ -51,6 +57,7 @@ export default function ProfileEditor({ profile }: { profile: ResumeContent['pro
             Save profile
           </Button>
           {saved && <span className="text-sm text-muted-foreground">Saved.</span>}
+          {error && <span className="text-sm text-destructive">{error}</span>}
         </div>
       </CardContent>
     </Card>

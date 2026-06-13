@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api'
 import type { AdminSection, FieldDef } from './sections.config'
 
-type Item = Record<string, any> & { id: number }
+export type Item = Record<string, any> & { id: number }
 
 function emptyForm(fields: FieldDef[]) {
   const f: Record<string, string> = {}
@@ -37,20 +37,23 @@ function formToPayload(form: Record<string, string>, fields: FieldDef[]) {
 
 function FieldInput({
   field,
+  id,
   value,
   onChange,
 }: {
   field: FieldDef
+  id: string
   value: string
   onChange: (v: string) => void
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <Label>{field.label}</Label>
+      <Label htmlFor={id}>{field.label}</Label>
       {field.type === 'text' ? (
-        <Input value={value} onChange={(e) => onChange(e.target.value)} />
+        <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <Textarea
+          id={id}
           value={value}
           rows={field.type === 'list' ? 4 : 3}
           onChange={(e) => onChange(e.target.value)}
@@ -72,6 +75,7 @@ export default function SectionEditor({
   const [editingId, setEditingId] = useState<number | 'new' | null>(null)
   const [form, setForm] = useState<Record<string, string>>(emptyForm(section.fields))
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   function startAdd() {
     setForm(emptyForm(section.fields))
@@ -92,8 +96,11 @@ export default function SectionEditor({
       } else if (typeof editingId === 'number') {
         await api.updateItem(section.path, editingId, payload)
       }
+      setError(null)
       setEditingId(null)
       onChanged()
+    } catch {
+      setError('Action failed — check your session and try again.')
     } finally {
       setBusy(false)
     }
@@ -104,7 +111,10 @@ export default function SectionEditor({
     setBusy(true)
     try {
       await api.deleteItem(section.path, id)
+      setError(null)
       onChanged()
+    } catch {
+      setError('Action failed — check your session and try again.')
     } finally {
       setBusy(false)
     }
@@ -119,12 +129,14 @@ export default function SectionEditor({
         </Button>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {error && <p className="text-sm text-destructive">{error}</p>}
         {editingId === 'new' && (
           <div className="flex flex-col gap-3 rounded-md border border-border p-4">
             {section.fields.map((f) => (
               <FieldInput
                 key={f.name}
                 field={f}
+                id={`${section.path}-new-${f.name}`}
                 value={form[f.name]}
                 onChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))}
               />
@@ -155,6 +167,7 @@ export default function SectionEditor({
                 <FieldInput
                   key={f.name}
                   field={f}
+                  id={`${section.path}-${item.id}-${f.name}`}
                   value={form[f.name]}
                   onChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))}
                 />
@@ -180,10 +193,20 @@ export default function SectionEditor({
             >
               <span className="text-sm font-medium">{item[section.titleField]}</span>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => startEdit(item)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => startEdit(item)}
+                  disabled={busy}
+                >
                   Edit
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => remove(item.id)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => remove(item.id)}
+                  disabled={busy}
+                >
                   Delete
                 </Button>
               </div>

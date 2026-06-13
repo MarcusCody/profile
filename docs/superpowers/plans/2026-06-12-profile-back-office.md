@@ -1938,7 +1938,7 @@ import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api'
 import type { AdminSection, FieldDef } from './sections.config'
 
-type Item = Record<string, any> & { id: number }
+export type Item = Record<string, any> & { id: number }
 
 function emptyForm(fields: FieldDef[]) {
   const f: Record<string, string> = {}
@@ -1968,20 +1968,23 @@ function formToPayload(form: Record<string, string>, fields: FieldDef[]) {
 
 function FieldInput({
   field,
+  id,
   value,
   onChange,
 }: {
   field: FieldDef
+  id: string
   value: string
   onChange: (v: string) => void
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <Label>{field.label}</Label>
+      <Label htmlFor={id}>{field.label}</Label>
       {field.type === 'text' ? (
-        <Input value={value} onChange={(e) => onChange(e.target.value)} />
+        <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <Textarea
+          id={id}
           value={value}
           rows={field.type === 'list' ? 4 : 3}
           onChange={(e) => onChange(e.target.value)}
@@ -2003,6 +2006,7 @@ export default function SectionEditor({
   const [editingId, setEditingId] = useState<number | 'new' | null>(null)
   const [form, setForm] = useState<Record<string, string>>(emptyForm(section.fields))
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   function startAdd() {
     setForm(emptyForm(section.fields))
@@ -2023,8 +2027,11 @@ export default function SectionEditor({
       } else if (typeof editingId === 'number') {
         await api.updateItem(section.path, editingId, payload)
       }
+      setError(null)
       setEditingId(null)
       onChanged()
+    } catch {
+      setError('Action failed — check your session and try again.')
     } finally {
       setBusy(false)
     }
@@ -2035,7 +2042,10 @@ export default function SectionEditor({
     setBusy(true)
     try {
       await api.deleteItem(section.path, id)
+      setError(null)
       onChanged()
+    } catch {
+      setError('Action failed — check your session and try again.')
     } finally {
       setBusy(false)
     }
@@ -2050,12 +2060,14 @@ export default function SectionEditor({
         </Button>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {error && <p className="text-sm text-destructive">{error}</p>}
         {editingId === 'new' && (
           <div className="flex flex-col gap-3 rounded-md border border-border p-4">
             {section.fields.map((f) => (
               <FieldInput
                 key={f.name}
                 field={f}
+                id={`${section.path}-new-${f.name}`}
                 value={form[f.name]}
                 onChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))}
               />
@@ -2086,6 +2098,7 @@ export default function SectionEditor({
                 <FieldInput
                   key={f.name}
                   field={f}
+                  id={`${section.path}-${item.id}-${f.name}`}
                   value={form[f.name]}
                   onChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))}
                 />
@@ -2111,10 +2124,20 @@ export default function SectionEditor({
             >
               <span className="text-sm font-medium">{item[section.titleField]}</span>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => startEdit(item)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => startEdit(item)}
+                  disabled={busy}
+                >
                   Edit
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => remove(item.id)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => remove(item.id)}
+                  disabled={busy}
+                >
                   Delete
                 </Button>
               </div>
@@ -2143,13 +2166,17 @@ export default function ProfileEditor({ profile }: { profile: ResumeContent['pro
   const [form, setForm] = useState<Record<string, string>>({ ...profile })
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function save() {
     setBusy(true)
     setSaved(false)
     try {
       await api.updateProfile(form)
+      setError(null)
       setSaved(true)
+    } catch {
+      setError('Save failed — check your session and try again.')
     } finally {
       setBusy(false)
     }
@@ -2163,15 +2190,17 @@ export default function ProfileEditor({ profile }: { profile: ResumeContent['pro
       <CardContent className="flex flex-col gap-3">
         {profileFields.map((f) => (
           <div key={f.name} className="flex flex-col gap-1.5">
-            <Label>{f.label}</Label>
+            <Label htmlFor={`profile-${f.name}`}>{f.label}</Label>
             {f.type === 'textarea' ? (
               <Textarea
+                id={`profile-${f.name}`}
                 value={form[f.name] ?? ''}
                 rows={4}
                 onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))}
               />
             ) : (
               <Input
+                id={`profile-${f.name}`}
                 value={form[f.name] ?? ''}
                 onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))}
               />
@@ -2183,6 +2212,7 @@ export default function ProfileEditor({ profile }: { profile: ResumeContent['pro
             Save profile
           </Button>
           {saved && <span className="text-sm text-muted-foreground">Saved.</span>}
+          {error && <span className="text-sm text-destructive">{error}</span>}
         </div>
       </CardContent>
     </Card>
@@ -2198,7 +2228,7 @@ import { Button } from '@/components/ui/button'
 import { api, type ResumeContent, type SessionUser } from '@/lib/api'
 import { adminSections } from './sections.config'
 import ProfileEditor from './ProfileEditor'
-import SectionEditor from './SectionEditor'
+import SectionEditor, { type Item } from './SectionEditor'
 
 export default function Dashboard({
   user,
@@ -2208,9 +2238,14 @@ export default function Dashboard({
   onLogout: () => void
 }) {
   const [content, setContent] = useState<ResumeContent | null>(null)
+  const [loadError, setLoadError] = useState(false)
 
   function reload() {
-    api.getContent().then(setContent)
+    setLoadError(false)
+    api
+      .getContent()
+      .then(setContent)
+      .catch(() => setLoadError(true))
   }
 
   useEffect(() => {
@@ -2243,7 +2278,16 @@ export default function Dashboard({
         </div>
       </header>
 
-      {!content ? (
+      {loadError ? (
+        <div className="flex flex-col items-start gap-3">
+          <p className="text-sm text-destructive">
+            Could not load content. Please try again.
+          </p>
+          <Button variant="outline" size="sm" onClick={reload}>
+            Retry
+          </Button>
+        </div>
+      ) : !content ? (
         <p className="text-muted-foreground">Loading…</p>
       ) : (
         <div className="flex flex-col gap-6">
@@ -2252,7 +2296,7 @@ export default function Dashboard({
             <SectionEditor
               key={section.path}
               section={section}
-              items={(content as any)[sectionKey(section.path)]}
+              items={content[sectionKey(section.path)] as Item[]}
               onChanged={reload}
             />
           ))}
@@ -2262,8 +2306,10 @@ export default function Dashboard({
   )
 }
 
-function sectionKey(path: string): keyof ResumeContent {
-  const map: Record<string, keyof ResumeContent> = {
+type SectionKey = Exclude<keyof ResumeContent, 'profile'>
+
+function sectionKey(path: string): SectionKey {
+  const map: Record<string, SectionKey> = {
     'skill-groups': 'skillGroups',
     experiences: 'experiences',
     projects: 'projects',
