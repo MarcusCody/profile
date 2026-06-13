@@ -1,5 +1,6 @@
 import express from 'express'
 import cookieParser from 'cookie-parser'
+import { getContent } from './sections'
 
 export function createApp() {
   const app = express()
@@ -8,6 +9,10 @@ export function createApp() {
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true })
+  })
+
+  app.get('/api/content', async (_req, res) => {
+    res.json(await getContent())
   })
 
   return app
