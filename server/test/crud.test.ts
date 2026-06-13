@@ -49,4 +49,21 @@ describe('experiences CRUD', () => {
     const after = await request(app).get('/api/content')
     expect(after.body.experiences).toHaveLength(0)
   })
+
+  it('returns 404 (not a crash) when updating a non-existent id', async () => {
+    const res = await request(app)
+      .put('/api/experiences/999999')
+      .set('Cookie', authCookie)
+      .send({ role: 'Ghost' })
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'not_found' })
+  })
+
+  it('returns 404 (not a crash) when deleting a non-existent id', async () => {
+    const res = await request(app)
+      .delete('/api/experiences/999999')
+      .set('Cookie', authCookie)
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'not_found' })
+  })
 })

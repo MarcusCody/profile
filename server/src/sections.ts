@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { prisma } from './db'
 import { requireAuth } from './auth/session'
+import { wrap } from './http'
 
 export interface SectionConfig {
   path: string
@@ -51,9 +52,14 @@ function toRow(body: any, cfg: SectionConfig) {
   const data: any = {}
   for (const f of cfg.fields) if (body[f] !== undefined) data[f] = body[f]
   for (const f of cfg.arrayFields)
-    if (body[f] !== undefined) data[f] = JSON.stringify(body[f] ?? [])
+    if (body[f] !== undefined)
+      data[f] = JSON.stringify(Array.isArray(body[f]) ? body[f] : [])
   return data
 }
+
+const cfgByModel: Record<string, SectionConfig> = Object.fromEntries(
+  sections.map((s) => [s.model, s]),
+)
 
 export async function getContent() {
   const [profile, skillGroups, experiences, projects, education, awards] =
@@ -68,42 +74,51 @@ export async function getContent() {
 
   return {
     profile,
-    skillGroups: skillGroups.map((r) => ({ ...r, skills: JSON.parse(r.skills) })),
-    experiences: experiences.map((r) => ({
-      ...r,
-      highlights: JSON.parse(r.highlights),
-    })),
-    projects: projects.map((r) => ({ ...r, tags: JSON.parse(r.tags) })),
-    education,
-    awards,
+    skillGroups: skillGroups.map((r) => toOutput(r, cfgByModel.skillGroup)),
+    experiences: experiences.map((r) => toOutput(r, cfgByModel.experience)),
+    projects: projects.map((r) => toOutput(r, cfgByModel.project)),
+    education: education.map((r) => toOutput(r, cfgByModel.education)),
+    awards: awards.map((r) => toOutput(r, cfgByModel.award)),
   }
 }
 
 export function sectionRouter(cfg: SectionConfig) {
   const r = Router()
 
-  r.post('/', requireAuth, async (req, res) => {
-    const max = await delegate(cfg.model).aggregate({ _max: { sortOrder: true } })
-    const sortOrder = (max._max.sortOrder ?? -1) + 1
-    const created = await delegate(cfg.model).create({
-      data: { ...toRow(req.body, cfg), sortOrder },
-    })
-    res.status(201).json(toOutput(created, cfg))
-  })
+  r.post(
+    '/',
+    requireAuth,
+    wrap(async (req, res) => {
+      const max = await delegate(cfg.model).aggregate({ _max: { sortOrder: true } })
+      const sortOrder = (max._max.sortOrder ?? -1) + 1
+      const created = await delegate(cfg.model).create({
+        data: { ...toRow(req.body, cfg), sortOrder },
+      })
+      res.status(201).json(toOutput(created, cfg))
+    }),
+  )
 
-  r.put('/:id', requireAuth, async (req, res) => {
-    const id = Number(req.params.id)
-    const updated = await delegate(cfg.model).update({
-      where: { id },
-      data: toRow(req.body, cfg),
-    })
-    res.json(toOutput(updated, cfg))
-  })
+  r.put(
+    '/:id',
+    requireAuth,
+    wrap(async (req, res) => {
+      const id = Number(req.params.id)
+      const updated = await delegate(cfg.model).update({
+        where: { id },
+        data: toRow(req.body, cfg),
+      })
+      res.json(toOutput(updated, cfg))
+    }),
+  )
 
-  r.delete('/:id', requireAuth, async (req, res) => {
-    await delegate(cfg.model).delete({ where: { id: Number(req.params.id) } })
-    res.status(204).end()
-  })
+  r.delete(
+    '/:id',
+    requireAuth,
+    wrap(async (req, res) => {
+      await delegate(cfg.model).delete({ where: { id: Number(req.params.id) } })
+      res.status(204).end()
+    }),
+  )
 
   return r
 }

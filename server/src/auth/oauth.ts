@@ -2,9 +2,15 @@ import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import type { Response } from 'express'
 import { config } from '../config'
+import { wrap } from '../http'
 import { signSession, SESSION_COOKIE, type SessionUser } from './session'
 
 const STATE_COOKIE = 'oauth_state'
+
+/** Allowlist gate: true only for non-empty emails present in ALLOWED_EMAILS. */
+export function isAllowedEmail(email: string): boolean {
+  return !!email && config.allowedEmails.includes(email.toLowerCase())
+}
 
 function setState(res: Response, state: string) {
   res.cookie(STATE_COOKIE, state, {
@@ -16,7 +22,7 @@ function setState(res: Response, state: string) {
 }
 
 function finishLogin(res: Response, user: SessionUser) {
-  if (!user.email || !config.allowedEmails.includes(user.email.toLowerCase())) {
+  if (!isAllowedEmail(user.email)) {
     res.status(403).send('Access denied: this account is not allowed.')
     return
   }
@@ -44,44 +50,51 @@ authRouter.get('/github', (_req, res) => {
   res.redirect(url.toString())
 })
 
-authRouter.get('/github/callback', async (req, res) => {
-  const { code, state } = req.query
-  if (!code || state !== req.cookies?.[STATE_COOKIE]) {
-    res.status(400).send('Invalid OAuth state.')
-    return
-  }
-  const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
-    method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: config.github.clientId,
-      client_secret: config.github.clientSecret,
-      code,
-      redirect_uri: `${config.appUrl}/auth/github/callback`,
-    }),
-  })
-  const { access_token } = (await tokenRes.json()) as { access_token?: string }
-  if (!access_token) {
-    res.status(400).send('Failed to obtain GitHub token.')
-    return
-  }
-  const ghHeaders = {
-    Authorization: `Bearer ${access_token}`,
-    'User-Agent': 'profile-admin',
-    Accept: 'application/vnd.github+json',
-  }
-  const ghUser = (await (
-    await fetch('https://api.github.com/user', { headers: ghHeaders })
-  ).json()) as { email?: string; name?: string; login?: string }
-  let email = ghUser.email ?? ''
-  if (!email) {
-    const emails = (await (
-      await fetch('https://api.github.com/user/emails', { headers: ghHeaders })
-    ).json()) as Array<{ email: string; primary: boolean }>
-    email = emails.find((e) => e.primary)?.email ?? emails[0]?.email ?? ''
-  }
-  finishLogin(res, { email, name: ghUser.name ?? ghUser.login, provider: 'github' })
-})
+authRouter.get(
+  '/github/callback',
+  wrap(async (req, res) => {
+    const { code, state } = req.query
+    if (!code || state !== req.cookies?.[STATE_COOKIE]) {
+      res.status(400).send('Invalid OAuth state.')
+      return
+    }
+    const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: config.github.clientId,
+        client_secret: config.github.clientSecret,
+        code,
+        redirect_uri: `${config.appUrl}/auth/github/callback`,
+      }),
+    })
+    const { access_token } = (await tokenRes.json()) as { access_token?: string }
+    if (!access_token) {
+      res.status(400).send('Failed to obtain GitHub token.')
+      return
+    }
+    const ghHeaders = {
+      Authorization: `Bearer ${access_token}`,
+      'User-Agent': 'profile-admin',
+      Accept: 'application/vnd.github+json',
+    }
+    const ghUser = (await (
+      await fetch('https://api.github.com/user', { headers: ghHeaders })
+    ).json()) as { email?: string; name?: string; login?: string }
+    let email = ghUser.email ?? ''
+    if (!email) {
+      const emails = (await (
+        await fetch('https://api.github.com/user/emails', { headers: ghHeaders })
+      ).json()) as Array<{ email: string; primary: boolean }>
+      email = emails.find((e) => e.primary)?.email ?? emails[0]?.email ?? ''
+    }
+    finishLogin(res, {
+      email,
+      name: ghUser.name ?? ghUser.login,
+      provider: 'github',
+    })
+  }),
+)
 
 // --- Google ---
 authRouter.get('/google', (_req, res) => {
@@ -96,38 +109,46 @@ authRouter.get('/google', (_req, res) => {
   res.redirect(url.toString())
 })
 
-authRouter.get('/google/callback', async (req, res) => {
-  const { code, state } = req.query
-  if (!code || state !== req.cookies?.[STATE_COOKIE]) {
-    res.status(400).send('Invalid OAuth state.')
-    return
-  }
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code: String(code),
-      client_id: config.google.clientId,
-      client_secret: config.google.clientSecret,
-      redirect_uri: `${config.appUrl}/auth/google/callback`,
-      grant_type: 'authorization_code',
-    }),
-  })
-  const { access_token } = (await tokenRes.json()) as { access_token?: string }
-  if (!access_token) {
-    res.status(400).send('Failed to obtain Google token.')
-    return
-  }
-  const g = (await (
-    await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
-      headers: { Authorization: `Bearer ${access_token}` },
+authRouter.get(
+  '/google/callback',
+  wrap(async (req, res) => {
+    const { code, state } = req.query
+    if (!code || state !== req.cookies?.[STATE_COOKIE]) {
+      res.status(400).send('Invalid OAuth state.')
+      return
+    }
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code: String(code),
+        client_id: config.google.clientId,
+        client_secret: config.google.clientSecret,
+        redirect_uri: `${config.appUrl}/auth/google/callback`,
+        grant_type: 'authorization_code',
+      }),
     })
-  ).json()) as { email?: string; name?: string }
-  finishLogin(res, { email: g.email ?? '', name: g.name, provider: 'google' })
-})
+    const { access_token } = (await tokenRes.json()) as { access_token?: string }
+    if (!access_token) {
+      res.status(400).send('Failed to obtain Google token.')
+      return
+    }
+    const g = (await (
+      await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+        headers: { Authorization: `Bearer ${access_token}` },
+      })
+    ).json()) as { email?: string; name?: string }
+    finishLogin(res, { email: g.email ?? '', name: g.name, provider: 'google' })
+  }),
+)
 
 // --- Logout ---
 authRouter.post('/logout', (_req, res) => {
-  res.clearCookie(SESSION_COOKIE)
+  res.clearCookie(SESSION_COOKIE, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: config.isHttps,
+    path: '/',
+  })
   res.json({ ok: true })
 })
