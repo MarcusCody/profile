@@ -3,7 +3,6 @@ dist
 *.local
 .DS_Store
 server/node_modules
-server/dev.db
-server/test.db
+server/**/*.db
 .env
 server/.env

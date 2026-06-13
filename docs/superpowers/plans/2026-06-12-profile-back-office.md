@@ -152,11 +152,14 @@ PORT="3001"
 
 ```
 server/node_modules
-server/dev.db
-server/test.db
+server/**/*.db
 .env
 server/.env
 ```
+
+> Note: Prisma resolves `file:./dev.db` relative to the schema directory, so the
+> SQLite files are created at `server/prisma/dev.db` and `server/prisma/test.db`.
+> The `server/**/*.db` glob ignores them wherever they land.
 
 - [ ] **Step 5: Install backend deps**
 
@@ -258,7 +261,7 @@ Then leave OAuth values blank for now; `DATABASE_URL="file:./dev.db"` is enough 
 - [ ] **Step 3: Generate client and create the dev DB**
 
 Run: `npm --prefix server run db:generate && npm --prefix server run db:push`
-Expected: Prisma generates the client and creates `server/dev.db` with all tables.
+Expected: Prisma generates the client and creates `server/prisma/dev.db` (relative to the schema dir) with all tables.
 
 - [ ] **Step 4: Add a `Profile` interface to `src/data/resume.ts`**
 
