@@ -1,4 +1,16 @@
-export const profile = {
+export interface Profile {
+  name: string
+  title: string
+  location: string
+  email: string
+  phone: string
+  whatsapp: string
+  linkedin: string
+  github: string
+  summary: string
+}
+
+export const profile: Profile = {
   name: 'Chang Hao Jie',
   title: 'Fullstack Developer · Frontend Team Lead',
   location: 'Kuala Lumpur, Malaysia',
