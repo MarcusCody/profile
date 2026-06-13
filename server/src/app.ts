@@ -1,6 +1,7 @@
 import express from 'express'
 import cookieParser from 'cookie-parser'
 import { getContent } from './sections'
+import { requireAuth } from './auth/session'
 
 export function createApp() {
   const app = express()
@@ -13,6 +14,10 @@ export function createApp() {
 
   app.get('/api/content', async (_req, res) => {
     res.json(await getContent())
+  })
+
+  app.get('/api/me', requireAuth, (req, res) => {
+    res.json({ user: (req as any).user })
   })
 
   return app
