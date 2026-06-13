@@ -12,6 +12,22 @@ const authCookie = `${SESSION_COOKIE}=${signSession({
 
 beforeEach(async () => {
   await prisma.experience.deleteMany()
+  await prisma.profile.upsert({
+    where: { id: 'singleton' },
+    update: {},
+    create: {
+      id: 'singleton',
+      name: 'Test User',
+      title: 'Dev',
+      location: 'KL',
+      email: 'owner@example.com',
+      phone: '123',
+      whatsapp: 'wa',
+      linkedin: 'li',
+      github: 'gh',
+      summary: 'sum',
+    },
+  })
 })
 
 describe('experiences CRUD', () => {

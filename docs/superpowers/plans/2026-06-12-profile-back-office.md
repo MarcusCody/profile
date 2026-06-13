@@ -743,6 +743,10 @@ export async function getContent() {
       prisma.award.findMany({ orderBy: { sortOrder: 'asc' } }),
     ])
 
+  if (!profile) {
+    throw new Error('Profile singleton not found — run the seed')
+  }
+
   return {
     profile,
     skillGroups: skillGroups.map((r) => toOutput(r, cfgByModel.skillGroup)),
@@ -1494,7 +1498,13 @@ export default function App() {
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    api.getContent().then(setContent).catch(() => setError(true))
+    api
+      .getContent()
+      .then(setContent)
+      .catch((err) => {
+        console.error('Failed to load content', err)
+        setError(true)
+      })
   }, [])
 
   if (error) {

@@ -72,6 +72,10 @@ export async function getContent() {
       prisma.award.findMany({ orderBy: { sortOrder: 'asc' } }),
     ])
 
+  if (!profile) {
+    throw new Error('Profile singleton not found — run the seed')
+  }
+
   return {
     profile,
     skillGroups: skillGroups.map((r) => toOutput(r, cfgByModel.skillGroup)),

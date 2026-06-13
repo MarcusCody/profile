@@ -14,7 +14,13 @@ export default function App() {
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    api.getContent().then(setContent).catch(() => setError(true))
+    api
+      .getContent()
+      .then(setContent)
+      .catch((err) => {
+        console.error('Failed to load content', err)
+        setError(true)
+      })
   }, [])
 
   if (error) {
