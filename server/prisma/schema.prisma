@@ -3,9 +3,13 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "sqlserver"
   url      = env("DATABASE_URL")
 }
+
+// Note: text/JSON columns that can exceed SQL Server's default NVARCHAR(1000)
+// (the long summary and the JSON-encoded string[] fields) use NVARCHAR(MAX) to
+// avoid truncation. Short fields (names, titles, dates) use the default.
 
 model Profile {
   id       String @id @default("singleton")
@@ -17,13 +21,13 @@ model Profile {
   whatsapp String
   linkedin String
   github   String
-  summary  String
+  summary  String @db.NVarChar(Max)
 }
 
 model SkillGroup {
   id        Int    @id @default(autoincrement())
   title     String
-  skills    String // JSON-encoded string[]
+  skills    String @db.NVarChar(Max) // JSON-encoded string[]
   sortOrder Int    @default(0)
 }
 
@@ -33,15 +37,15 @@ model Experience {
   role       String
   period     String
   location   String
-  highlights String // JSON-encoded string[]
+  highlights String @db.NVarChar(Max) // JSON-encoded string[]
   sortOrder  Int    @default(0)
 }
 
 model Project {
   id          Int    @id @default(autoincrement())
   name        String
-  description String
-  tags        String // JSON-encoded string[]
+  description String @db.NVarChar(Max)
+  tags        String @db.NVarChar(Max) // JSON-encoded string[]
   sortOrder   Int    @default(0)
 }
 
@@ -59,6 +63,6 @@ model Award {
   title       String
   issuer      String
   date        String
-  description String?
+  description String? @db.NVarChar(Max)
   sortOrder   Int     @default(0)
 }

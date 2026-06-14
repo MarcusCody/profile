@@ -1,0 +1,20 @@
+# Local SQL Server for development + tests (matches the Azure SQL production engine).
+#
+# Apple Silicon (M1/M2/M3) note: this image is amd64-only and runs under
+# emulation. In Docker Desktop, enable Settings → General →
+# "Use Rosetta for x86/amd64 emulation on Apple Silicon" for acceptable speed.
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: profile-mssql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Dev_Str0ng_Pass!"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+
+volumes:
+  mssql-data:

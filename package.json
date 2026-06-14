@@ -9,7 +9,7 @@
     "dev:api": "npm --prefix server run dev",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "server:setup": "npm --prefix server install && npm --prefix server run db:generate && npm --prefix server run db:push && npm --prefix server run db:seed",
+    "server:setup": "npm --prefix server install && npm --prefix server run db:init",
     "server:test": "npm --prefix server test"
   },
   "dependencies": {

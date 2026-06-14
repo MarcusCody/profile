@@ -5,9 +5,13 @@
     "postinstall": "prisma generate",
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:create": "node scripts/create-databases.mjs",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "db:init": "npm run db:up && npm run db:create && npm run db:push && npm run db:seed",
     "test": "vitest run"
   },
   "dependencies": {
@@ -24,6 +28,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.5",
     "@types/supertest": "^6.0.2",
+    "mssql": "^11.0.1",
     "prisma": "^6.2.1",
     "supertest": "^7.0.0",
     "typescript": "^5.7.2",
