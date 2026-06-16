@@ -26,8 +26,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       # --- Build the frontend (outputs to ./dist) ---
+      # The committed lockfiles are generated on macOS and omit Linux-only
+      # optional deps (e.g. @rollup/rollup-linux-x64-gnu), which breaks a
+      # strict `npm ci` on the Linux runner. Install lockless so npm resolves
+      # the correct platform binaries (npm bug npm/cli#4828).
       - name: Install root deps
-        run: npm ci
+        run: rm -f package-lock.json && npm install --no-audit --no-fund
 
       - name: Build frontend
         run: npm run build
@@ -35,7 +39,7 @@ jobs:
       # --- Prepare the server (Linux-native deps + Prisma engine) ---
       - name: Install server deps
         working-directory: server
-        run: npm ci
+        run: rm -f package-lock.json && npm install --no-audit --no-fund
 
       - name: Generate Prisma client
         working-directory: server
