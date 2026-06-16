@@ -6,3 +6,4 @@ server/node_modules
 server/**/*.db
 .env
 server/.env
+PUBLISH_PROFILE_DO_NOT_COMMIT.xml
