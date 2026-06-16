@@ -62,9 +62,16 @@ jobs:
           cp server/package.json release/server/package.json
           cp server/tsconfig.json release/server/tsconfig.json
 
+      # Run From Package (WEBSITE_RUN_FROM_PACKAGE=1) mounts the uploaded ZIP as a
+      # read-only wwwroot instead of extracting files onto the app's disk. This
+      # avoids the slow extraction that caused 409 deploy conflicts on the F1 tier.
+      # The deploy action needs an actual .zip for this path to engage reliably.
+      - name: Zip release
+        run: cd release && zip -r -q ../release.zip .
+
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: release
+          package: release.zip

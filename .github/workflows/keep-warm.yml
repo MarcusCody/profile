@@ -1,0 +1,25 @@
+name: Keep app warm
+
+# F1 (free) App Service has no "Always On", so the Node process is unloaded after
+# ~20 min idle, causing a cold start on the next visit. This pings a DB-free
+# health endpoint to keep the *app* warm WITHOUT waking the serverless SQL
+# database (which would burn the free vCore-seconds budget). The DB stays paused
+# until a real visitor hits a data route; loginTimeout=60 handles that wake.
+#
+# Note: GitHub's scheduled runs are best-effort and often delayed under load, so
+# this reduces cold starts rather than eliminating them.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          curl -fsS --max-time 30 \
+            https://haojie-profile.azurewebsites.net/api/health \
+            && echo "  <- app is warm" || echo "ping failed (app may be cold/starting)"

@@ -12,15 +12,38 @@ import { ResumeProvider } from '@/lib/resume-context'
 export default function App() {
   const [content, setContent] = useState<ResumeContent | null>(null)
   const [error, setError] = useState(false)
+  const [slow, setSlow] = useState(false)
 
   useEffect(() => {
-    api
-      .getContent()
-      .then(setContent)
-      .catch((err) => {
-        console.error('Failed to load content', err)
-        setError(true)
-      })
+    let cancelled = false
+    // The free database auto-pauses; the first request can take ~30-60s to
+    // wake it. Show a friendlier message if loading runs long, and retry a
+    // few times before giving up.
+    const slowTimer = setTimeout(() => {
+      if (!cancelled) setSlow(true)
+    }, 4000)
+
+    async function load() {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          const data = await api.getContent()
+          if (!cancelled) setContent(data)
+          return
+        } catch (err) {
+          console.error(`Failed to load content (attempt ${attempt + 1})`, err)
+          if (attempt < 3)
+            await new Promise((resolve) => setTimeout(resolve, 5000))
+        }
+      }
+      if (!cancelled) setError(true)
+    }
+
+    void load().finally(() => clearTimeout(slowTimer))
+
+    return () => {
+      cancelled = true
+      clearTimeout(slowTimer)
+    }
   }, [])
 
   if (error) {
@@ -33,8 +56,13 @@ export default function App() {
 
   if (!content) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        Loading…
+      <div className="flex min-h-screen flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
+        <span>Loading…</span>
+        {slow && (
+          <span className="text-sm">
+            Waking up the server — this can take up to a minute on first visit.
+          </span>
+        )}
       </div>
     )
   }

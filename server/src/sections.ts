@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { prisma } from './db'
+import { prisma, withDbRetry } from './db'
 import { requireAuth } from './auth/session'
 import { wrap } from './http'
 
@@ -63,14 +63,16 @@ const cfgByModel: Record<string, SectionConfig> = Object.fromEntries(
 
 export async function getContent() {
   const [profile, skillGroups, experiences, projects, education, awards] =
-    await Promise.all([
-      prisma.profile.findUnique({ where: { id: 'singleton' } }),
-      prisma.skillGroup.findMany({ orderBy: { sortOrder: 'asc' } }),
-      prisma.experience.findMany({ orderBy: { sortOrder: 'asc' } }),
-      prisma.project.findMany({ orderBy: { sortOrder: 'asc' } }),
-      prisma.education.findMany({ orderBy: { sortOrder: 'asc' } }),
-      prisma.award.findMany({ orderBy: { sortOrder: 'asc' } }),
-    ])
+    await withDbRetry(() =>
+      Promise.all([
+        prisma.profile.findUnique({ where: { id: 'singleton' } }),
+        prisma.skillGroup.findMany({ orderBy: { sortOrder: 'asc' } }),
+        prisma.experience.findMany({ orderBy: { sortOrder: 'asc' } }),
+        prisma.project.findMany({ orderBy: { sortOrder: 'asc' } }),
+        prisma.education.findMany({ orderBy: { sortOrder: 'asc' } }),
+        prisma.award.findMany({ orderBy: { sortOrder: 'asc' } }),
+      ]),
+    )
 
   if (!profile) {
     throw new Error('Profile singleton not found — run the seed')
