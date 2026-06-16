@@ -66,8 +66,11 @@ jobs:
       # read-only wwwroot instead of extracting files onto the app's disk. This
       # avoids the slow extraction that caused 409 deploy conflicts on the F1 tier.
       # The deploy action needs an actual .zip for this path to engage reliably.
+      # -y preserves symlinks. node_modules/.bin/* entries (e.g. tsx) are
+      # symlinks; without -y they get dereferenced into flat files, which breaks
+      # the packages' relative imports at runtime (ERR_MODULE_NOT_FOUND).
       - name: Zip release
-        run: cd release && zip -r -q ../release.zip .
+        run: cd release && zip -r -y -q ../release.zip .
 
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
