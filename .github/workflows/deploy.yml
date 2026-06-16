@@ -1,0 +1,66 @@
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AZURE_WEBAPP_NAME: haojie-profile
+  NODE_VERSION: "22"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # --- Build the frontend (outputs to ./dist) ---
+      - name: Install root deps
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      # --- Prepare the server (Linux-native deps + Prisma engine) ---
+      - name: Install server deps
+        working-directory: server
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: server
+        run: npx prisma generate
+
+      - name: Prune server dev dependencies
+        working-directory: server
+        run: npm prune --omit=dev
+
+      # --- Assemble the deployment package ---
+      # Mirrors the runtime layout: <root>/dist and <root>/server.
+      # server/src/server.ts resolves the client from ../../dist.
+      - name: Stage release
+        run: |
+          mkdir -p release/server
+          cp -r dist release/dist
+          cp -r server/node_modules release/server/node_modules
+          cp -r server/src release/server/src
+          cp -r server/prisma release/server/prisma
+          cp server/package.json release/server/package.json
+          cp server/tsconfig.json release/server/tsconfig.json
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: release
