@@ -124,7 +124,7 @@
 ```bash
 # Database (dev uses SQLite). For Azure SQL later, swap provider in schema.prisma
 # and set e.g. sqlserver://<host>;database=<db>;user=<u>;password=<p>;encrypt=true
-DATABASE_URL="file:./dev.db"
+c="file:./dev.db"
 
 # Signed-cookie session secret (generate a long random string)
 JWT_SECRET="change-me-to-a-long-random-string"

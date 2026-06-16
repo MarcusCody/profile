@@ -8,6 +8,7 @@
     "dev:web": "vite",
     "dev:api": "npm --prefix server run dev",
     "build": "tsc -b && vite build",
+    "build:azure": "npm --prefix server install --no-package-lock && npm --prefix server prune --omit=dev --no-package-lock",
     "preview": "vite preview",
     "server:setup": "npm --prefix server install && npm --prefix server run db:init",
     "server:test": "npm --prefix server test"
