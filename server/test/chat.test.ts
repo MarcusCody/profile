@@ -71,6 +71,11 @@ describe('POST /api/fit-check', () => {
     expect(res.body.gaps).toEqual(['Rust'])
     // grounding: the serialized profile is injected into the system prompt
     expect(provider.lastSystem).toContain('Test User')
+    expect(provider.lastSystem).toContain('Email: owner@example.com')
+    expect(provider.lastSystem).toContain('Phone: 123')
+    expect(provider.lastSystem).toContain('WhatsApp: wa')
+    expect(provider.lastSystem).toContain('LinkedIn: li')
+    expect(provider.lastSystem).toContain('GitHub: gh')
   })
 
   it('rejects an empty job description with 400', async () => {

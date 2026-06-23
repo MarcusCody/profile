@@ -14,6 +14,13 @@ function serialize(c: Content): string {
   lines.push(`Location: ${p.location}`)
   lines.push(`Summary: ${p.summary}`)
 
+  lines.push('\n## Contact')
+  lines.push(`Email: ${p.email}`)
+  lines.push(`Phone: ${p.phone}`)
+  lines.push(`WhatsApp: ${p.whatsapp}`)
+  lines.push(`LinkedIn: ${p.linkedin}`)
+  lines.push(`GitHub: ${p.github}`)
+
   lines.push('\n## Skills')
   for (const g of c.skillGroups) {
     lines.push(`- ${g.title}: ${g.skills.join(', ')}`)
