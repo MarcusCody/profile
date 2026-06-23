@@ -6,6 +6,7 @@ import Experience from './components/Experience'
 import Projects from './components/Projects'
 import EducationAwards from './components/EducationAwards'
 import Footer from './components/Footer'
+import AssistantWidget from './components/chat/AssistantWidget'
 import { api, type ResumeContent } from '@/lib/api'
 import { ResumeProvider } from '@/lib/resume-context'
 
@@ -84,6 +85,7 @@ export default function App() {
         <EducationAwards />
       </main>
       <Footer />
+      <AssistantWidget />
     </ResumeProvider>
   )
 }

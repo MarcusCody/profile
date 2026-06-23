@@ -5,10 +5,16 @@ import { requireAuth } from './auth/session'
 import { authRouter } from './auth/oauth'
 import { prisma } from './db'
 import { wrap, errorHandler } from './http'
+import { chatRouter } from './chat/router'
+import { getChatProvider, type ChatProvider } from './chat/provider'
 
-export function createApp() {
+export function createApp(opts: { chatProvider?: ChatProvider } = {}) {
   const app = express()
-  app.use(express.json())
+  // App Service / Vite dev sit behind a single proxy; trust it so the chat
+  // rate limiter keys on the real client IP (X-Forwarded-For).
+  app.set('trust proxy', 1)
+  // Raise the body limit so a pasted job description fits (default is 100kb).
+  app.use(express.json({ limit: '256kb' }))
   app.use(cookieParser())
 
   app.get('/api/health', (_req, res) => {
@@ -54,6 +60,8 @@ export function createApp() {
   for (const cfg of sections) {
     app.use(`/api/${cfg.path}`, sectionRouter(cfg))
   }
+
+  app.use('/api', chatRouter(opts.chatProvider ?? getChatProvider()))
 
   app.use('/auth', authRouter)
 
